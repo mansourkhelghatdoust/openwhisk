@@ -1,0 +1,3 @@
+[submodule "modifications/symmetrical-telegram"]
+	path = modifications/symmetrical-telegram
+	url = https://github.com/klasafgeijerstam/symmetrical-telegram.git
