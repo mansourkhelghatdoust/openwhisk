@@ -27,7 +27,7 @@ object UserEvents {
   case class UserEventsConfig(enabled: Boolean)
 
   val enabled = loadConfigOrThrow[UserEventsConfig](ConfigKeys.userEvents).enabled
-
+  
   def send(producer: MessageProducer, em: => EventMessage) = {
     if (enabled) {
       producer.send("events", em)
