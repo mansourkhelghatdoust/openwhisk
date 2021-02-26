@@ -135,7 +135,7 @@ protected[core] abstract class EntitlementProvider(
   private val invokeRateThrottler =
     new RateThrottler(
       "actions per minute",
-      calculateIndividualLimit(config.actionInvokePerMinuteLimit.toInt, _.limits.invocationsPerMinute))
+      calculateIndividualLimit(10000 /*config.actionInvokePerMinuteLimit.toInt*/, _.limits.invocationsPerMinute))
   private val triggerRateThrottler =
     new RateThrottler(
       "triggers per minute",
@@ -150,7 +150,7 @@ protected[core] abstract class EntitlementProvider(
   private val concurrentInvokeThrottler =
     new ActivationThrottler(
       loadBalancer,
-      activationThrottleCalculator(config.actionInvokeConcurrentLimit.toInt, _.limits.concurrentInvocations))
+      activationThrottleCalculator(10000/*config.actionInvokeConcurrentLimit.toInt*/, _.limits.concurrentInvocations))
 
   private val messagingProvider = SpiLoader.get[MessagingProvider]
   protected val eventProducer = messagingProvider.getProducer(this.config)

@@ -18,12 +18,14 @@
 package org.apache.openwhisk.core.database
 
 import java.time.Instant
-
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
-import spray.json.JsObject
+import org.apache.http.client.methods.HttpPost
+import org.apache.http.entity.StringEntity
+import org.apache.http.impl.client.HttpClientBuilder
 import org.apache.openwhisk.common.{Logging, TransactionId}
 import org.apache.openwhisk.core.entity._
+import spray.json.JsObject
 
 import scala.concurrent.Future
 import scala.util.{Failure, Success}
@@ -42,6 +44,22 @@ class ArtifactActivationStore(actorSystem: ActorSystem, actorMaterializer: Actor
 
     logging.debug(this, s"recording activation '${activation.activationId}'")
     logging.error(this, s"ACTIVATED FUNCTION '${activation.name}', time ${activation.duration}")
+
+    val nres = listActivationsMatchingName(activation.namespace, activation.name.toPath, 0, 200, context = context)
+
+    nres onComplete {
+      case Success(Right(activations)) =>
+
+        val avg = expMovingAvg(activations.sortBy(a => a.start.getEpochSecond).map(a => a.duration.get));
+        doLog(activation.name.asString, avg, activation.duration.getOrElse(0))
+      case Success(Left(activations)) =>
+
+        val avg = expMovingAvg(activations.sortBy(a => a.fields("start").toString().toLong).map(a => a.fields("duration").toString().toLong));
+        doLog(activation.name.asString, avg, activation.duration.getOrElse(0))
+
+      case Failure(exception) => logging.error(from=this, message="FAILED TO CALCULATE THE VALUES")
+    }
+
     val res = WhiskActivation.put(artifactStore, activation)
 
     res onComplete {
@@ -52,26 +70,39 @@ class ArtifactActivationStore(actorSystem: ActorSystem, actorMaterializer: Actor
           s"failed to record activation ${activation.activationId} with error ${t.getLocalizedMessage}")
     }
 
-    val nres = listActivationsMatchingName(activation.namespace, activation.name.toPath, 0, 200, context = context)
+    res
 
-    nres onComplete {
-      case Success(Right(activations)) =>
+  }
 
-        val count = activations.length.asInstanceOf[Float]
-        val avg: Float = activations.map(a => a.duration.get).sum / count
-        logging.error(from=this, message=s"AVERAGE RUNNING TIME IS ${avg}, over ${count} runs")
-      case Success(Left(activations)) =>
+  def doLog(action: String, estimated: Long, actual: Long): Unit = {
+    logging.error(from=this, message=s"Estimated time is ${estimated}, actual was: ${actual}")
+    val client = HttpClientBuilder.create().build();
+    val post = new HttpPost("http://localhost:8000/logs");
+    post.setHeader("Content-Type", "application/json");
+    val body =s"""
+         {\"action\": \"${action}\",
+          \"estimated\": ${estimated},
+          \"actual\": ${actual}
+         }"""
+    post.setEntity(new StringEntity(body))
 
-        logging.error(from=this, message=s"WANTED STUFF GOT THIS HOT GARBAGE INSTEAD: ${activations}")
-        val sum = activations.map(a => a.fields("duration").toString().toInt).sum
-        val count = activations.length.asInstanceOf[Float]
-        val avg = sum / count;
-        logging.error(from=this, message=s"AVERAGE RUNNING TIME IS ${avg}, over ${count} runs")
+    val resp = client.execute(post);
+    logging.error(from=this, s"RESPONSE " + resp.getStatusLine.toString)
+  }
 
-      case Failure(exception) => logging.error(from=this, message="FAILED TO CALCULATE THE VALUES THAT WE LIKE")
+  def expMovingAvg(data: List[Long]): Long = {
+    if (data.isEmpty) {
+      return 0
+    }
+    val alpha = 0.5;
+
+    var avg = data.head.asInstanceOf[Double];
+
+    for (i <- 1 until data.length) {
+      avg = alpha * data(i) + (1.0 - alpha) * avg;
     }
 
-    res
+    avg.asInstanceOf[Long]
   }
 
   def get(activationId: ActivationId, context: UserContext)(
