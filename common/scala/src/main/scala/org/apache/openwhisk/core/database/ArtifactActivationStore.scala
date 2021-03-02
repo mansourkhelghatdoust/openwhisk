@@ -41,7 +41,6 @@ class ArtifactActivationStore(actorSystem: ActorSystem, actorMaterializer: Actor
     notifier: Option[CacheChangeNotification]): Future[DocInfo] = {
 
     logging.debug(this, s"recording activation '${activation.activationId}'")
-    logging.error(this, s"ACTIVATED FUNCTION '${activation.name}', time ${activation.duration}")
     val res = WhiskActivation.put(artifactStore, activation)
 
     res onComplete {
@@ -51,26 +50,6 @@ class ArtifactActivationStore(actorSystem: ActorSystem, actorMaterializer: Actor
           this,
           s"failed to record activation ${activation.activationId} with error ${t.getLocalizedMessage}")
     }
-
-    val nres = listActivationsMatchingName(activation.namespace, activation.name.toPath, 0, 200, context = context)
-
-    nres onComplete {
-      case Success(Right(activations)) =>
-
-        val count = activations.length.asInstanceOf[Float]
-        val avg: Float = activations.map(a => a.duration.get).sum / count
-        logging.error(from=this, message=s"AVERAGE RUNNING TIME IS ${avg}, over ${count} runs")
-      case Success(Left(activations)) =>
-
-        logging.error(from=this, message=s"WANTED STUFF GOT THIS HOT GARBAGE INSTEAD: ${activations}")
-        val sum = activations.map(a => a.fields("duration").toString().toInt).sum
-        val count = activations.length.asInstanceOf[Float]
-        val avg = sum / count;
-        logging.error(from=this, message=s"AVERAGE RUNNING TIME IS ${avg}, over ${count} runs")
-
-      case Failure(exception) => logging.error(from=this, message="FAILED TO CALCULATE THE VALUES THAT WE LIKE")
-    }
-
     res
   }
 
