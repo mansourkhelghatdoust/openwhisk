@@ -37,6 +37,7 @@ distDockerCoverage.dependsOn ':common:scala:scoverageClasses', 'scoverageClasses
 dependencies {
     compile "org.scala-lang:scala-library:${gradle.scala.version}"
     compile project(':common:scala')
+    compile 'net.liftweb:lift-json_2.12:3.4.3'
 
     compile ("org.apache.curator:curator-recipes:${gradle.curator.version}") {
         exclude group: 'org.apache.zookeeper', module:'zookeeper'

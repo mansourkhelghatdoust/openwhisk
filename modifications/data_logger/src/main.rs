@@ -1,4 +1,4 @@
-use actix_web::{post, web, App, HttpServer, Responder};
+use actix_web::{get, post, web, App, HttpServer, Responder};
 use log::info;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
@@ -22,6 +22,19 @@ struct LogEntry {
     action: String,
     estimated: u64,
     actual: u64,
+}
+
+#[derive(Serialize)]
+struct Memory {
+    memory: u64,
+}
+
+#[get("/{action}/memory")]
+async fn get_memory(Path(action): Path<String>) -> impl Responder {
+    info!("Got memory request for action: {}", action);
+    web::Json(Memory {
+        memory: 1024,
+    })
 }
 
 #[post("/calls/{application_id}/{caller}/{callee}")]
@@ -67,6 +80,7 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .service(post_log)
             .service(calls)
+            .service(get_memory)
             .app_data(file.clone())
             .app_data(calls_file.clone())
     })

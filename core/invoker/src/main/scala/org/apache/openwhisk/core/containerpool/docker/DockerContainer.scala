@@ -39,10 +39,29 @@ import spray.json._
 import org.apache.openwhisk.core.containerpool.logging.LogLine
 import org.apache.openwhisk.core.entity.ExecManifest.ImageName
 import org.apache.openwhisk.http.Messages
+import org.apache.http.impl.client.HttpClientBuilder
+import org.apache.http.client.methods.HttpGet
+import org.apache.http.util.EntityUtils
+import net.liftweb.json._
+
+case class Memory(memory: Int)
+
 
 object DockerContainer {
+  implicit val formats = DefaultFormats
 
   private val byteStringSentinel = ByteString(Container.ACTIVATION_LOG_SENTINEL)
+  
+  // Load memory from logger service
+  def getMemory(action: String): Int = {
+    val client = HttpClientBuilder.create().build();
+    val req = new HttpGet(s"http://localhost:8000/${action}/memory")
+    val response = client.execute(req)
+    val json = EntityUtils.toString(response.getEntity, "UTF-8")
+    val mem = parse(json).extract[Memory]
+     
+    mem.memory
+  }
 
   /**
    * Creates a container running on a docker daemon.
@@ -85,15 +104,19 @@ object DockerContainer {
       case (key, valueList) => valueList.toList.flatMap(Seq(key, _))
     }
 
+    // --name, wsk0_4_guest_f1
+    val actualName: String = name.get.split('_').drop(3).fold("")(_ + "_" + _).stripPrefix("_")
+    val newMemory = getMemory(actualName)
+
     // NOTE: --dns-option on modern versions of docker, but is --dns-opt on docker 1.12
     val dnsOptString = if (docker.clientVersion.startsWith("1.12")) { "--dns-opt" } else { "--dns-option" }
     val args = Seq(
       "--cpu-shares",
       cpuShares.toString,
       "--memory",
-      s"${memory.toMB}m",
+      s"${newMemory}m",
       "--memory-swap",
-      s"${memory.toMB}m",
+      s"${newMemory}m",
       "--network",
       network) ++
       environmentArgs ++
@@ -105,6 +128,7 @@ object DockerContainer {
 
     val registryConfigUrl = registryConfig.map(_.url).getOrElse("")
     val imageToUse = image.merge.resolveImageName(Some(registryConfigUrl))
+
 
     val pulled = image match {
       case Left(userProvided) if userProvided.tag.map(_ == "latest").getOrElse(true) =>
