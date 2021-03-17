@@ -1,19 +1,21 @@
 use actix_web::{get, post, web, App, HttpServer, Responder};
-use log::info;
+use log::{error, info};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fs::File;
-use std::io::Write;
 use std::sync::Mutex;
 use structopt::StructOpt;
 use web::Path;
 
+mod graph;
+use graph::*;
+
+mod epoch_cache;
+
+mod flatten;
+use flatten::*;
+
 #[derive(StructOpt, Clone)]
 struct Arguments {
-    /// The file to store logs in
-    log_file: String,
-    /// The file to store calls in
-    calls_file: String,
     /// The port to listen on
     port: u16,
     /// Application config file (JSON)
@@ -23,7 +25,6 @@ struct Arguments {
 #[derive(Deserialize, Serialize, Debug)]
 struct LogEntry {
     action: String,
-    estimated: u64,
     actual: u64,
 }
 
@@ -60,7 +61,7 @@ async fn get_memory(Path(action): Path<String>,
         info!("Found memory for action, returning memory: {}", app_action.memory);
         web::Json(Memory { memory: app_action.memory })
     } else {
-        info!("Did not find memory for action, returning default");
+        error!("Did not find memory for action {}, returning default", action);
         web::Json(Memory { memory: 256 })
     }
 
@@ -68,30 +69,32 @@ async fn get_memory(Path(action): Path<String>,
 
 #[post("/calls/{application_id}/{caller}/{callee}")]
 async fn calls(
-    log_file: web::Data<CallsFile>,
     Path((application_id, caller, callee)): Path<(String, String, String)>,
+    graph: CallGraph,
 ) -> impl Responder {
-    let mut file = log_file.0.lock().unwrap();
-    writeln!(file, "{},{},{}", application_id, caller, callee).unwrap();
+
     info!("Received: {} {} {}", application_id, caller, callee);
+    
+    let mut graph = graph.lock().unwrap();
+    graph.edge(&caller, &callee).call_count += 1;
+
     "Ok"
 }
 
 #[post("/logs")]
-async fn post_log(entry: web::Json<LogEntry>, log_file: web::Data<LogFile>) -> impl Responder {
-    let mut file = log_file.lock().unwrap();
-    writeln!(
-        file,
-        "{},{},{}",
-        entry.action, entry.estimated, entry.actual
-    )
-    .unwrap();
+async fn post_log(entry: web::Json<LogEntry>, graph: CallGraph) -> impl Responder {
     info!("Received: {:?}", *entry);
+
+    
+    let mut graph = graph.lock().unwrap();
+    let node = graph.get_node(&entry.action);
+    node.invoke_count += 1;
+    node.buffer.add(entry.actual);
+
     "Ok"
 }
 
-type LogFile = Mutex<File>;
-struct CallsFile(Mutex<File>);
+type CallGraph = web::Data<Mutex<Graph<EdgeInfo, ActionInfo>>>;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -103,12 +106,7 @@ async fn main() -> std::io::Result<()> {
 
     let app = web::Data::new(app);
 
-    let file = web::Data::new(Mutex::new(std::fs::File::create(args.log_file)?));
-    let calls_file = web::Data::new(CallsFile(Mutex::new(std::fs::File::create(
-        args.calls_file,
-    )?)));
-    writeln!(file.lock().unwrap(), "action,estimated,actual").unwrap();
-    writeln!(calls_file.0.lock().unwrap(), "application_id,caller,callee").unwrap();
+    let call_graph: CallGraph = web::Data::new(Mutex::new(Graph::new()));
 
     env_logger::Builder::from_default_env().init();
     println!("Listening on http://0.0.0.0:{}/logs", port);
@@ -118,9 +116,8 @@ async fn main() -> std::io::Result<()> {
             .service(post_log)
             .service(calls)
             .service(get_memory)
-            .app_data(file.clone())
-            .app_data(calls_file.clone())
             .app_data(app.clone())
+            .app_data(call_graph.clone())
     })
     .bind(("0.0.0.0", port))?
     .run()

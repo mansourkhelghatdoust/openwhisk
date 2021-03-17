@@ -43,22 +43,10 @@ class ArtifactActivationStore(actorSystem: ActorSystem, actorMaterializer: Actor
     notifier: Option[CacheChangeNotification]): Future[DocInfo] = {
 
     logging.debug(this, s"recording activation '${activation.activationId}'")
+
     logging.error(this, s"ACTIVATED FUNCTION '${activation.name}', time ${activation.duration}")
 
-    val nres = listActivationsMatchingName(activation.namespace, activation.name.toPath, 0, 200, context = context)
-
-    nres onComplete {
-      case Success(Right(activations)) =>
-
-        val avg = expMovingAvg(activations.sortBy(a => a.start.getEpochSecond).map(a => a.duration.get));
-        doLog(activation.name.asString, avg, activation.duration.getOrElse(0))
-      case Success(Left(activations)) =>
-
-        val avg = expMovingAvg(activations.sortBy(a => a.fields("start").toString().toLong).map(a => a.fields("duration").toString().toLong));
-        doLog(activation.name.asString, avg, activation.duration.getOrElse(0))
-
-      case Failure(exception) => logging.error(from=this, message="FAILED TO CALCULATE THE VALUES")
-    }
+    doLog(activation.name.asString, activation.duration.getOrElse(0))
 
     val res = WhiskActivation.put(artifactStore, activation)
 
@@ -74,35 +62,18 @@ class ArtifactActivationStore(actorSystem: ActorSystem, actorMaterializer: Actor
 
   }
 
-  def doLog(action: String, estimated: Long, actual: Long): Unit = {
-    logging.error(from=this, message=s"Estimated time is ${estimated}, actual was: ${actual}")
+  def doLog(action: String, actual: Long): Unit = {
     val client = HttpClientBuilder.create().build();
     val post = new HttpPost("http://localhost:8000/logs");
     post.setHeader("Content-Type", "application/json");
     val body =s"""
          {\"action\": \"${action}\",
-          \"estimated\": ${estimated},
           \"actual\": ${actual}
          }"""
     post.setEntity(new StringEntity(body))
 
     val resp = client.execute(post);
     logging.error(from=this, s"RESPONSE " + resp.getStatusLine.toString)
-  }
-
-  def expMovingAvg(data: List[Long]): Long = {
-    if (data.isEmpty) {
-      return 0
-    }
-    val alpha = 0.5;
-
-    var avg = data.head.asInstanceOf[Double];
-
-    for (i <- 1 until data.length) {
-      avg = alpha * data(i) + (1.0 - alpha) * avg;
-    }
-
-    avg.asInstanceOf[Long]
   }
 
   def get(activationId: ActivationId, context: UserContext)(
