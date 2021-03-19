@@ -1,19 +1,31 @@
+use std::fmt;
 use crate::epoch_cache::EpochCache;
-use crate::graph::Graph;
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct ActionInfo {
+    pub action_name: String,
     pub invoke_count: usize,
     pub buffer: EpochCache,
 }
 
-#[derive(Default)]
+impl fmt::Display for ActionInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(self, f)
+    }
+}
+
+#[derive(Default, Debug)]
 pub struct EdgeInfo {
     pub call_count: usize,
 }
 
-type PGraph = Graph<f64, u64>;
+impl fmt::Display for EdgeInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(self, f)
+    }
+}
 
+/*
 fn to_probability_graph(base: &Graph<EdgeInfo, ActionInfo>) -> PGraph {
     let mut graph = Graph::new();
     for (from_name, (_id, value)) in &base.nodes {
@@ -33,4 +45,5 @@ fn to_probability_graph(base: &Graph<EdgeInfo, ActionInfo>) -> PGraph {
 fn flatten(graph: &mut PGraph) {
 
 }
+*/
 
