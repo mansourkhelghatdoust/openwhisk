@@ -55,7 +55,7 @@ pub fn flatten(indices: NodeIndicies, graph: &mut StableGraph<u64, f64>) {
             }
 
             // - add the additional execution time to the node according
-            
+
         }
     }
 
