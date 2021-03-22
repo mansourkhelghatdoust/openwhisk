@@ -165,6 +165,53 @@ pub fn remove_self_loops(graph: &mut Graph) {
     }
 }
 
+pub fn has_parallel(
+    from_node: NodeIndex,
+    to_node: NodeIndex,
+    graph: &mut Graph,
+    max_length: usize,
+) -> bool{
+    let tmp = graph.clone();
+    let paths = all_simple_paths::<Vec<_>, _>(&tmp, from_node, to_node, 1, Some(max_length));
+
+    let mut sum = 0.0;
+    for p in paths {
+        let mut tmp_sum = 1.0;
+        for (&from, &to) in p.iter().zip(p.iter().skip(1)) {
+            let edge_index = graph.find_edge(from, to).unwrap();
+            tmp_sum *= graph[edge_index];
+        }
+
+        sum += tmp_sum;
+    }
+    sum > 1.0
+}
+pub fn remove_parallel(
+    from_node: NodeIndex,
+    to_node: NodeIndex,
+    graph: &mut Graph,
+    max_length: usize,
+) {
+
+    // find the simple path with the longest execution time
+    
+}
+
+pub fn remove_parallels(graph: &mut Graph) {
+    let tmp = graph.clone();
+
+    for path_length in 1..graph.node_count() {
+        for from_node in tmp.node_indices() {
+            for to_node in tmp.node_indices() {
+                if has_parallel(from_node, to_node, graph, path_length) {
+                    remove_parallel(from_node, to_node, graph, path_length);
+                }
+            }
+        }
+    }
+
+}
+
 #[test]
 fn test_removing_branches() {
     let mut graph: Graph = StableGraph::new();
